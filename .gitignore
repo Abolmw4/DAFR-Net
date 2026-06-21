@@ -1,2 +1,7 @@
 instructur.txt
 DAFR-ENV
+__pycache__
+.idea
+.vscode
+model_zoo/
+*.pth
