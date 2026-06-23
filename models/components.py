@@ -527,4 +527,3 @@ class UpsampleOneStep(nn.Sequential):
         H, W = self.input_resolution
         flops = H * W * self.num_feat * 3 * 9
         return flops
-

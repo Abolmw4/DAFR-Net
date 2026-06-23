@@ -3,6 +3,7 @@ from models.components import PatchEmbed, PatchUnEmbed, RSTB, Upsample, Upsample
 from timm.models.layers import trunc_normal_
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SwinIR(BaseNetwork):
