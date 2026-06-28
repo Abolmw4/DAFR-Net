@@ -5,6 +5,8 @@ import requests
 import torch
 import unittest
 from utils.utils import load_model
+from losses.swin_loss import VGGPerceptualLoss
+
 
 class TestNetowk(unittest.TestCase):
     def __init__(self, methodName = "runTest"):
@@ -107,6 +109,13 @@ class TestNetowk(unittest.TestCase):
         
         
         verify_model(pretrained_model)
+    
+    def test_perceptual_loss(self):
+        perceptual_loss = VGGPerceptualLoss()
         
+        pred = torch.rand(2, 3, 224, 224)
+        target = torch.rand(2, 3, 224, 224)
         
+        loss = perceptual_loss(pred, target)
+        print(loss)
         
