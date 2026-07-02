@@ -53,5 +53,3 @@ class VGGPerceptualLoss(nn.Module):
         for w, pf, tf in zip(self.weights, pred_feature, target_feature):
             loss += w * self.criterion(pf, tf.detach())
         return loss
-    
-        
