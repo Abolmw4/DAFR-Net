@@ -26,7 +26,6 @@ class DAFRDataSet(Dataset):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                 aug_path = os.path.join(aug_dir, filename)
                 
-                # استخراج کلید GT بر اساس الگوی نام فایل
                 gt_key = None
                 if "Last_" in filename:
                     gt_key = filename.split("Last_")[0] + "Last_"
@@ -46,11 +45,11 @@ class DAFRDataSet(Dataset):
     def __getitem__(self, index):
         pair = self.valid_pairs[index]
         
-        # لود با حالت RGB برای جلوگیری از قاطی شدن رنگ‌ها
         aug_img = Image.open(pair['aug_path']).convert('RGB')
         gt_img = Image.open(pair['gt_path']).convert('RGB')
         
         aug_tensor = self.transform(aug_img)
         gt_tensor = self.transform(gt_img)
         
-        return aug_tensor, gt_tensor, pair['aug_path'], pair['gt_path']
+        # return aug_tensor, gt_tensor, pair['aug_path'], pair['gt_path']
+        return aug_tensor, gt_tensor

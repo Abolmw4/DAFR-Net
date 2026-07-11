@@ -118,4 +118,3 @@ class TestNetowk(unittest.TestCase):
         
         loss = perceptual_loss(pred, target)
         print(loss)
- 

@@ -16,8 +16,7 @@ from tqdm import tqdm
 from models.encoder.swinir import SwinIR
 from utils.utils import load_model, verify_model
 from losses.swin_loss import VGGPerceptualLoss
-from datasets.restore_dataset import SyntheticSRDataset
-
+from datasets.DAFR_dataset import DAFRDataSet
 
 def main():
 
@@ -33,7 +32,7 @@ def main():
     # Download model if needed
     # =========================================================
 
-    model_path = "model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
+    model_path = "/workspace/model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
 
     if os.path.exists(model_path):
         print(f'loading model from {model_path}')
@@ -59,6 +58,8 @@ def main():
 
     model = SwinIR(upscale=1, in_chans=3, img_size=48, window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], mlp_ratio=2, upsampler='pixelshuffle', resi_connection='1conv').to(device)
 
+    # model = SwinIR(upscale=1, in_chans=3, img_size=64, window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], mlp_ratio=2, upsampler='', resi_connection='1conv').to(device)
+
     pretrained_model = load_model(model)
     pretrained_model = pretrained_model.to(device)
 
@@ -73,7 +74,8 @@ def main():
         for param in pretrained_model.layers[i].parameters():
             param.requires_grad = True
 
-    for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_before_upsample, pretrained_model.upsample, pretrained_model.conv_last]:
+    # for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_before_upsample, pretrained_model.upsample, pretrained_model.conv_last]:
+    for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_last]:
         for param in module.parameters():
             param.requires_grad = True
 
@@ -83,17 +85,17 @@ def main():
     # Dataset
     # =========================================================
 
-    dataset = SyntheticSRDataset(num_samples=500, hr_size=224, scale=1)
-
+    # dataset = SyntheticSRDataset(num_samples=500, hr_size=224, scale=1)
+    dataset = DAFRDataSet(gt_dir="data/GT", aug_dir="data/dataset")
     # train / validation split
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
 
     train_dataset, val_dataset = random_split(dataset,[train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
 
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
 
     # =========================================================
     # Optimizer / Scheduler / Loss
