@@ -2,6 +2,8 @@ import torch
 import os
 import requests
 from typing import Callable
+import re
+from pathlib import Path
 
 def window_partition(x, window_size):
     """
@@ -60,3 +62,20 @@ def load_model(model: Callable, weight_src: str="/workspace/model_zoo/001_classi
         pretrained_model = torch.load(weight_src)
         model.load_state_dict(pretrained_model["params"] if "params" in pretrained_model.keys() else pretrained_model, strict=False)
         return model
+
+
+def find_latest_checkpoint(ckpt_dir: str) -> str | None:
+    ckpt_dir = Path(ckpt_dir)
+    if not ckpt_dir.exists():
+        return None
+
+    ckpts = list(ckpt_dir.glob("checkpoint_epoch_*.pth"))
+    if not ckpts:
+        return None
+
+    def extract_epoch(p: Path) -> int:
+        m = re.search(r"checkpoint_epoch_(\d+)\.pth", p.name)
+        return int(m.group(1)) if m else -1
+
+    ckpts.sort(key=extract_epoch)
+    return str(ckpts[-1])
