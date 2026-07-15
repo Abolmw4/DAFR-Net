@@ -13,7 +13,7 @@ from models.encoder.swinir import SwinIR
 def get_inference(device: str='cuda', 
                   save_result: str="output_result.png", 
                   input_image: str="/workspace/data/dataset/0_opal-1_2023-07-21_19-12-43_Track_ID_4292_Last__SaltAndPepperNoise_0.1_0.1.jpg",
-                  model_path: str="/workspace/checkpoints/checkpoint_epoch_5.pth") -> None:
+                  model_path: str="/workspace/checkpoints/checkpoint_epoch_3.pth") -> None:
     
     device = torch.device("cuda" if torch.cuda.is_available() and device == "cuda" else "cpu")
     print(f"Using device: {device}")
@@ -28,7 +28,7 @@ def get_inference(device: str='cuda',
         embed_dim=180, 
         num_heads=[6, 6, 6, 6, 6, 6], 
         mlp_ratio=2, 
-        upsampler='pixelshuffle', 
+        upsampler='', 
         resi_connection='1conv'
     ).to(device)
 

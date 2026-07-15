@@ -92,9 +92,9 @@ def main():
 
     train_dataset, val_dataset = random_split(dataset,[train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
 
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
     # =========================================================
     # Optimizer / Scheduler / Loss
@@ -102,7 +102,7 @@ def main():
 
     optimizer = AdamW(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr=1e-4, weight_decay=1e-4)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
     criterion1 = VGGPerceptualLoss().to(device)
     criterion2 = PixelLoss().to(device)
@@ -170,7 +170,7 @@ def main():
             loss_pixel = criterion2(pred, hr)
             ssim_loss = criterion3(pred, hr)
             
-            loss = 0.1 * loss_pixel + 0.3 * loss_percept + 0.8 * ssim_loss
+            loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss
             
             loss.backward()
 
@@ -220,7 +220,7 @@ def main():
                 loss_pixel = criterion2(pred, hr)
                 ssim_loss = criterion3(pred, hr)
                 
-                loss = 0.1 * loss_pixel + 0.3 * loss_percept + 0.8 * ssim_loss
+                loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
