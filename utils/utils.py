@@ -2,6 +2,8 @@ import torch
 import os
 import requests
 from typing import Callable
+import re
+from pathlib import Path
 
 def window_partition(x, window_size):
     """
@@ -56,7 +58,66 @@ def verify_model(model):
     print(f"Trainable %:      {100 * trainable_count / total:.2f}%")
     
     
-def load_model(model: Callable, weight_src: str="/workspace/model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"):
-        pretrained_model = torch.load(weight_src)
-        model.load_state_dict(pretrained_model["params"] if "params" in pretrained_model.keys() else pretrained_model, strict=False)
-        return model
+# def load_model(model: Callable, weight_src: str="/workspace/model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"):
+#         pretrained_model = torch.load(weight_src)
+#         model.load_state_dict(pretrained_model["params"] if "params" in pretrained_model.keys() else pretrained_model, strict=False)
+#         return model
+
+
+
+
+def load_model(
+    model,
+    weight_src="/workspace/model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
+):
+    checkpoint = torch.load(weight_src, map_location="cpu")
+
+    state_dict = checkpoint["params"] if "params" in checkpoint else checkpoint
+
+    model_dict = model.state_dict()
+
+    compatible_weights = {}
+
+    skipped = []
+
+    for k, v in state_dict.items():
+
+        if k not in model_dict:
+            continue
+
+        if model_dict[k].shape != v.shape:
+            skipped.append((k, tuple(v.shape), tuple(model_dict[k].shape)))
+            continue
+
+        compatible_weights[k] = v
+
+    model_dict.update(compatible_weights)
+
+    model.load_state_dict(model_dict)
+
+    print(f"Loaded {len(compatible_weights)} layers.")
+
+    if skipped:
+        print("\nSkipped layers because of shape mismatch:")
+        for name, old_shape, new_shape in skipped:
+            print(f"{name}: {old_shape} -> {new_shape}")
+
+    return model
+
+
+
+def find_latest_checkpoint(ckpt_dir: str) -> str | None:
+    ckpt_dir = Path(ckpt_dir)
+    if not ckpt_dir.exists():
+        return None
+
+    ckpts = list(ckpt_dir.glob("checkpoint_epoch_*.pth"))
+    if not ckpts:
+        return None
+
+    def extract_epoch(p: Path) -> int:
+        m = re.search(r"checkpoint_epoch_(\d+)\.pth", p.name)
+        return int(m.group(1)) if m else -1
+
+    ckpts.sort(key=extract_epoch)
+    return str(ckpts[-1])

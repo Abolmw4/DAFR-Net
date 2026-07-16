@@ -14,10 +14,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from models.encoder.swinir import SwinIR
-from utils.utils import load_model, verify_model
-from losses.swin_loss import VGGPerceptualLoss
-from datasets.restore_dataset import SyntheticSRDataset
-
+from utils.utils import load_model, verify_model, find_latest_checkpoint
+from losses.swin_loss import VGGPerceptualLoss, PixelLoss, SSIMLoss, IdentityLoss
+from datasets.DAFR_dataset import DAFRDataSet
 
 def main():
 
@@ -33,7 +32,7 @@ def main():
     # Download model if needed
     # =========================================================
 
-    model_path = "model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
+    model_path = "/workspace/model_zoo/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
 
     if os.path.exists(model_path):
         print(f'loading model from {model_path}')
@@ -57,7 +56,8 @@ def main():
     # Model
     # =========================================================
 
-    model = SwinIR(upscale=1, in_chans=3, img_size=48, window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], mlp_ratio=2, upsampler='pixelshuffle', resi_connection='1conv').to(device)
+    # model = SwinIR(upscale=1, in_chans=3, img_size=48, window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], mlp_ratio=2, upsampler='pixelshuffle', resi_connection='1conv').to(device)
+    model = SwinIR(upscale=1, in_chans=3, img_size=48, window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], mlp_ratio=2, upsampler='', resi_connection='1conv').to(device)
 
     pretrained_model = load_model(model)
     pretrained_model = pretrained_model.to(device)
@@ -73,7 +73,8 @@ def main():
         for param in pretrained_model.layers[i].parameters():
             param.requires_grad = True
 
-    for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_before_upsample, pretrained_model.upsample, pretrained_model.conv_last]:
+    # for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_before_upsample, pretrained_model.upsample, pretrained_model.conv_last]:
+    for module in [pretrained_model.norm, pretrained_model.conv_after_body, pretrained_model.conv_last]:
         for param in module.parameters():
             param.requires_grad = True
 
@@ -83,17 +84,17 @@ def main():
     # Dataset
     # =========================================================
 
-    dataset = SyntheticSRDataset(num_samples=500, hr_size=224, scale=1)
-
+    # dataset = SyntheticSRDataset(num_samples=500, hr_size=224, scale=1)
+    dataset = DAFRDataSet(gt_dir="data/GT", aug_dir="data/dataset")
     # train / validation split
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
 
     train_dataset, val_dataset = random_split(dataset,[train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
 
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
     # =========================================================
     # Optimizer / Scheduler / Loss
@@ -101,19 +102,50 @@ def main():
 
     optimizer = AdamW(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr=1e-4, weight_decay=1e-4)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
-    criterion = VGGPerceptualLoss().to(device)
-
-    epochs = 100
+    criterion1 = VGGPerceptualLoss().to(device)
+    criterion2 = PixelLoss().to(device)
+    criterion3 = SSIMLoss().to(device)
+    criterion4 = IdentityLoss().to(device)
+    epochs = 50
 
     global_step = 0
+    
+    
+    # =========================================================
+    # Resume training (optional)
+    # =========================================================
+    ckpt_dir = "/workspace/checkpoints"
+    resume = True  # set False if you have not to resume
+    resume_path = None  # if you have load specefic model set path here
+    start_epoch = 0
 
+    if resume:
+        if resume_path is None:
+            resume_path = find_latest_checkpoint(ckpt_dir)
+
+        if resume_path is not None and os.path.exists(resume_path):
+            print(f"Resuming from checkpoint: {resume_path}")
+            ckpt = torch.load(resume_path, map_location=device)
+            pretrained_model.load_state_dict(ckpt["model"], strict=True)
+            optimizer.load_state_dict(ckpt["optimizer"])
+            scheduler.load_state_dict(ckpt["scheduler"])
+
+            start_epoch = ckpt["epoch"] 
+            global_step = ckpt.get("global_step", 0)
+
+            print(f"Loaded epoch={start_epoch}, global_step={global_step}")
+        else:
+            print("No checkpoint found. Starting from scratch.")
+            
     # =========================================================
     # Training loop
     # =========================================================
 
-    for epoch in tqdm(range(epochs)):
+    # for epoch in tqdm(range(epochs)):
+    for epoch in tqdm(range(start_epoch, epochs)):
+
 
         # =====================================================
         # TRAIN
@@ -135,8 +167,13 @@ def main():
             if pred.shape != hr.shape:
                 pred = F.interpolate(pred, size=hr.shape[-2:], mode="bicubic", align_corners=False)
 
-            loss = criterion(pred, hr)
-
+            loss_percept = criterion1(pred, hr)
+            loss_pixel = criterion2(pred, hr)
+            ssim_loss = criterion3(pred, hr)
+            identity_loss = criterion4(pred, hr)
+            
+            loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss + 0.4 * identity_loss
+            
             loss.backward()
 
             optimizer.step()
@@ -181,8 +218,13 @@ def main():
                 if pred.shape != hr.shape:
                     pred = F.interpolate(pred, size=hr.shape[-2:], mode="bicubic", align_corners=False)
 
-                loss = criterion(pred, hr)
-
+                loss_percept = criterion1(pred, hr)
+                loss_pixel = criterion2(pred, hr)
+                ssim_loss = criterion3(pred, hr)
+                identity_loss = criterion4(pred, hr)
+            
+                loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss + 0.4 * identity_loss
+                
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
@@ -232,12 +274,22 @@ def main():
         # Save checkpoint
         # =====================================================
 
-        ckpt_path = f"/workspace/checkpoints/checkpoint_epoch_{epoch+1}.pth"
+    
+        ckpt_dir = "/workspace/checkpoints"
+        os.makedirs(ckpt_dir, exist_ok=True)
 
-        torch.save({"epoch": epoch + 1, "model": pretrained_model.state_dict(), "optimizer": optimizer.state_dict(),}, ckpt_path)
+        ckpt_path = f"{ckpt_dir}/checkpoint_epoch_{epoch+1}.pth"
+
+        torch.save({
+            "epoch": epoch + 1,
+            "global_step": global_step,
+            "model": pretrained_model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict()}, ckpt_path)
 
         print(f"Checkpoint saved to {ckpt_path}")
-
+    
+    
     writer.close()
 
 
