@@ -3,6 +3,8 @@ from typing import Tuple, List
 from torchvision.models import vgg19, VGG19_Weights
 import torch
 from pytorch_msssim import SSIM
+from facenet_pytorch import InceptionResnetV1
+import torch.nn.functional as F
 
 class VGGFeatureExtractor(nn.Module):
     def __init__(self, layers_id: Tuple[int]=(3, 8, 17, 26, 35)) -> None:
@@ -74,3 +76,21 @@ class SSIMLoss(nn.Module):
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor):
         return 1.0 - self.ssim(pred, target)
+
+class IdentityLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = InceptionResnetV1(pretrained='vggface2').eval()
+        for p in self.encoder.parameters():
+            p.requires_grad = False
+        # facenet-pytorch ورودی 160x160 و رنج [-1, 1] می‌خواد
+        self.resize = nn.functional.interpolate
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        pred_n = self.resize(pred, size=(160, 160), mode='bilinear', align_corners=False) * 2 - 1
+        target_n = self.resize(target, size=(160, 160), mode='bilinear', align_corners=False) * 2 - 1
+
+        emb_pred = self.encoder(pred_n)
+        emb_target = self.encoder(target_n)
+
+        return 1.0 - F.cosine_similarity(emb_pred, emb_target).mean()

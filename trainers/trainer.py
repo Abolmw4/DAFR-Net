@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from models.encoder.swinir import SwinIR
 from utils.utils import load_model, verify_model, find_latest_checkpoint
-from losses.swin_loss import VGGPerceptualLoss, PixelLoss, SSIMLoss
+from losses.swin_loss import VGGPerceptualLoss, PixelLoss, SSIMLoss, IdentityLoss
 from datasets.DAFR_dataset import DAFRDataSet
 
 def main():
@@ -107,6 +107,7 @@ def main():
     criterion1 = VGGPerceptualLoss().to(device)
     criterion2 = PixelLoss().to(device)
     criterion3 = SSIMLoss().to(device)
+    criterion4 = IdentityLoss().to(device)
     epochs = 50
 
     global_step = 0
@@ -169,8 +170,9 @@ def main():
             loss_percept = criterion1(pred, hr)
             loss_pixel = criterion2(pred, hr)
             ssim_loss = criterion3(pred, hr)
+            identity_loss = criterion4(pred, hr)
             
-            loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss
+            loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss + 0.4 * identity_loss
             
             loss.backward()
 
@@ -219,8 +221,10 @@ def main():
                 loss_percept = criterion1(pred, hr)
                 loss_pixel = criterion2(pred, hr)
                 ssim_loss = criterion3(pred, hr)
+                identity_loss = criterion4(pred, hr)
+            
+                loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss + 0.4 * identity_loss
                 
-                loss = 1 * loss_pixel + 0.3 * loss_percept + 0.5 * ssim_loss
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
